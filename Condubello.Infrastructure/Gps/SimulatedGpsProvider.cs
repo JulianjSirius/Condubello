@@ -3,8 +3,8 @@ using Condubello.Application.Common.Interfaces;
 namespace Condubello.Infrastructure.Gps;
 
 /// <summary>
-/// Proveedor GPS simulado (no hay un proveedor real configurado). Genera un recorrido determinista
-/// por sesión para poder probar la sincronización; sustituir por la integración real del dispositivo.
+/// Proveedor GPS del sistema. Genera un recorrido determinista por sesión; el proyecto trabaja
+/// con datos simulados y no recibe puntos de dispositivos reales.
 /// </summary>
 public class SimulatedGpsProvider : IGpsProvider
 {

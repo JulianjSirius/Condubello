@@ -482,6 +482,9 @@ $RECYCLE.BIN/
 *.swp
 
 # Angular
-src/Condubello.Web/node_modules/
-src/Condubello.Web/dist/
-src/Condubello.Web/.angular/
+Condubello.Web/node_modules/
+Condubello.Web/dist/
+Condubello.Web/.angular/
+
+# Datos de OSRM (mapa descargado)
+docker/osrm-data/

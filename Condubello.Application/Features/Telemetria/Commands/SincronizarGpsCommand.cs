@@ -2,91 +2,6 @@ using System.Text.Json;
 
 namespace Condubello.Application.Features.Telemetria;
 
-internal static class GpsReglas
-{
-    /// <summary>Distancia máxima (metros) a la ruta autorizada antes de considerar una desviación.</summary>
-    public const double ToleranciaMetros = 150;
-
-    private const double MetrosPorGrado = 111_320;
-
-    public static string ConstruirLineString(IReadOnlyList<GpsPunto> puntos)
-    {
-        var coords = puntos.Select(p => new[] { p.Longitud, p.Latitud });
-        return JsonSerializer.Serialize(new { type = "LineString", coordinates = coords });
-    }
-
-    /// <summary>Extrae los vértices [lon, lat] de un GeoJSON (LineString, Feature o FeatureCollection).</summary>
-    public static List<(double Lon, double Lat)> VerticesRuta(string? geoJson)
-    {
-        var vertices = new List<(double, double)>();
-        if (string.IsNullOrWhiteSpace(geoJson))
-            return vertices;
-
-        using var doc = JsonDocument.Parse(geoJson);
-        Recolectar(doc.RootElement, vertices);
-        return vertices;
-    }
-
-    private static void Recolectar(JsonElement el, List<(double, double)> vertices)
-    {
-        if (el.ValueKind == JsonValueKind.Array)
-        {
-            if (el.GetArrayLength() >= 2 && el[0].ValueKind == JsonValueKind.Number && el[1].ValueKind == JsonValueKind.Number)
-                vertices.Add((el[0].GetDouble(), el[1].GetDouble()));
-            else
-                foreach (var hijo in el.EnumerateArray())
-                    Recolectar(hijo, vertices);
-        }
-        else if (el.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in el.EnumerateObject())
-                if (prop.Name is "coordinates" or "geometry" or "features" or "geometries")
-                    Recolectar(prop.Value, vertices);
-        }
-    }
-
-    public static bool HayDesviacion(IReadOnlyList<GpsPunto> puntos, List<(double Lon, double Lat)> ruta)
-    {
-        if (ruta.Count == 0)
-            return false;
-
-        return puntos.Any(p => DistanciaARutaMetros(p, ruta) > ToleranciaMetros);
-    }
-
-    private static double DistanciaARutaMetros(GpsPunto p, List<(double Lon, double Lat)> ruta)
-    {
-        if (ruta.Count == 1)
-            return Distancia(p.Longitud, p.Latitud, ruta[0].Lon, ruta[0].Lat, p.Latitud);
-
-        var min = double.MaxValue;
-        for (var i = 0; i < ruta.Count - 1; i++)
-            min = Math.Min(min, DistanciaASegmento(p, ruta[i], ruta[i + 1]));
-        return min;
-    }
-
-    // Aproximación equirectangular: suficiente para distancias cortas.
-    private static double DistanciaASegmento(GpsPunto p, (double Lon, double Lat) a, (double Lon, double Lat) b)
-    {
-        var k = Math.Cos(p.Latitud * Math.PI / 180);
-        double X(double lon) => (lon - p.Longitud) * k * MetrosPorGrado;
-        double Y(double lat) => (lat - p.Latitud) * MetrosPorGrado;
-
-        var (ax, ay, bx, by) = (X(a.Lon), Y(a.Lat), X(b.Lon), Y(b.Lat));
-        var (dx, dy) = (bx - ax, by - ay);
-        var largo2 = dx * dx + dy * dy;
-        var t = largo2 == 0 ? 0 : Math.Clamp(-(ax * dx + ay * dy) / largo2, 0, 1);
-        return Math.Sqrt(Math.Pow(ax + t * dx, 2) + Math.Pow(ay + t * dy, 2));
-    }
-
-    private static double Distancia(double lon1, double lat1, double lon2, double lat2, double latRef)
-    {
-        var k = Math.Cos(latRef * Math.PI / 180);
-        var dx = (lon2 - lon1) * k * MetrosPorGrado;
-        var dy = (lat2 - lat1) * MetrosPorGrado;
-        return Math.Sqrt(dx * dx + dy * dy);
-    }
-}
-
 [Autorizar(Rol.Administrativo)]
 public record SincronizarGpsCommand(SincronizarGpsRequest Data) : IRequest<Result<SincronizacionGpsDto>>;
 
@@ -95,6 +10,7 @@ public class SincronizarGpsHandler(
     IRepository<TelemetriaPrueba> telemetrias,
     IRepository<Ruta> rutas,
     IGpsProvider gps,
+    IRoutingProvider routing,
     IUnitOfWork unitOfWork) : IRequestHandler<SincronizarGpsCommand, Result<SincronizacionGpsDto>>
 {
     public async Task<Result<SincronizacionGpsDto>> Handle(SincronizarGpsCommand request, CancellationToken cancellationToken)
@@ -116,7 +32,7 @@ public class SincronizarGpsHandler(
                 cancellationToken);
         }
 
-        int sincronizadas = 0, conAlerta = 0, sinDatos = 0;
+        int sincronizadas = 0, conAlerta = 0, sinDatos = 0, sinAjustar = 0;
         var cacheRutas = new Dictionary<Guid, List<(double Lon, double Lat)>>();
 
         foreach (var sesion in objetivo)
@@ -137,18 +53,24 @@ public class SincronizarGpsHandler(
             }
             ruta ??= [];
 
-            var desviacion = GpsReglas.HayDesviacion(puntos, ruta);
+            // Se ajusta cada punto a la calle más cercana para que el ruido del GPS no genere falsas alertas.
+            var ajustados = await routing.AjustarPuntosAsync(puntos, cancellationToken);
+            if (ajustados is null)
+                sinAjustar++;
+            var puntosEvaluados = ajustados ?? puntos;
+            var desviacion = GpsReglas.HayDesviacion(puntosEvaluados, ruta);
 
             var telemetria = await telemetrias.FirstOrDefaultAsync(t => t.SesionId == sesion.Id, cancellationToken);
             var esNueva = telemetria is null;
             telemetria ??= new TelemetriaPrueba { SesionId = sesion.Id };
 
-            telemetria.RutaGps = GpsReglas.ConstruirLineString(puntos);
+            telemetria.RutaGps = GpsReglas.ConstruirLineString(puntosEvaluados);
             telemetria.AlertaDesviacion = desviacion;
             telemetria.ResumenTelemetria ??= JsonSerializer.Serialize(new
             {
                 fuente = "gps-sincronizado",
                 puntos = puntos.Count,
+                ajustadoACalles = ajustados is not null,
                 sincronizadoEn = DateTime.UtcNow
             });
 
@@ -164,9 +86,11 @@ public class SincronizarGpsHandler(
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var warnings = conAlerta > 0
-            ? new[] { $"{conAlerta} sesión(es) con desviación de la ruta autorizada." }
-            : null;
-        return Result<SincronizacionGpsDto>.Success(new SincronizacionGpsDto(sincronizadas, conAlerta, sinDatos), warnings);
+        var warnings = new List<string>();
+        if (conAlerta > 0)
+            warnings.Add($"{conAlerta} sesión(es) con desviación de la ruta autorizada.");
+        if (sinAjustar > 0)
+            warnings.Add($"{sinAjustar} sesión(es) se guardaron con los puntos GPS originales: OSRM no respondió o no pudo ajustarlas a las calles.");
+        return Result<SincronizacionGpsDto>.Success(new SincronizacionGpsDto(sincronizadas, conAlerta, sinDatos), warnings.Count > 0 ? warnings : null);
     }
 }

@@ -1,17 +1,16 @@
-# Build context: raíz del repositorio
+# Contexto de construcción: raíz del repositorio
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
-COPY Condubello.slnx ./
-COPY src/Condubello.Domain/*.csproj src/Condubello.Domain/
-COPY src/Condubello.Application/*.csproj src/Condubello.Application/
-COPY src/Condubello.Infrastructure/*.csproj src/Condubello.Infrastructure/
-COPY src/Condubello.Api/*.csproj src/Condubello.Api/
-RUN dotnet restore src/Condubello.Api/Condubello.Api.csproj
-COPY src/Condubello.Domain src/Condubello.Domain
-COPY src/Condubello.Application src/Condubello.Application
-COPY src/Condubello.Infrastructure src/Condubello.Infrastructure
-COPY src/Condubello.Api src/Condubello.Api
-RUN dotnet publish src/Condubello.Api/Condubello.Api.csproj -c Release -o /app --no-restore
+COPY Condubello.Domain/*.csproj Condubello.Domain/
+COPY Condubello.Application/*.csproj Condubello.Application/
+COPY Condubello.Infrastructure/*.csproj Condubello.Infrastructure/
+COPY Condubello.Api/*.csproj Condubello.Api/
+RUN dotnet restore Condubello.Api/Condubello.Api.csproj
+COPY Condubello.Domain Condubello.Domain
+COPY Condubello.Application Condubello.Application
+COPY Condubello.Infrastructure Condubello.Infrastructure
+COPY Condubello.Api Condubello.Api
+RUN dotnet publish Condubello.Api/Condubello.Api.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

@@ -10,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { forkJoin } from 'rxjs';
+import { catchError, concatMap, forkJoin, from, of } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { ApiService } from '../../core/crud.service';
 import { mensajeError } from '../../core/interceptors';
@@ -50,6 +50,13 @@ import { Column, Field, ModuleDef, RowAction } from './modules';
                 @case ('fecha') { {{ r[c.key] | date: 'dd/MM/yyyy HH:mm' }} }
                 @case ('bool') { <mat-icon>{{ r[c.key] ? 'check_circle' : 'cancel' }}</mat-icon> }
                 @case ('json') { <code class="json" [matTooltip]="texto(r, c)">{{ texto(r, c) }}</code> }
+                @case ('ruta') { <span class="dir" [matTooltip]="texto(r, c)">{{ texto(r, c) }}</span> }
+                @case ('resumen') {
+                  <span class="dir" [matTooltip]="texto(r, c)">{{ texto(r, c) }}</span>
+                  <button mat-icon-button type="button" matTooltip="Ver imagen del recorrido" (click)="verImagen(r)">
+                    <mat-icon>image</mat-icon>
+                  </button>
+                }
                 @case ('enum') { <span class="chip">{{ (r[c.key] ?? '').replaceAll('_', ' ') }}</span> }
                 @default { {{ texto(r, c) }} }
               }
@@ -86,6 +93,7 @@ import { Column, Field, ModuleDef, RowAction } from './modules';
     table { width: 100%; }
     .acciones { white-space: nowrap; text-align: right; }
     .vacio { padding: 24px; text-align: center; opacity: .7; }
+    .dir { display: inline-block; max-width: 420px; white-space: normal; vertical-align: middle; }
     .json { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
     .chip { padding: 2px 10px; border-radius: 12px; background: var(--mat-sys-secondary-container); font-size: 12px; white-space: nowrap; }
   `
@@ -101,6 +109,8 @@ export class CrudPageComponent {
   datos = signal<any[]>([]);
   cargando = signal(false);
   filtro = signal('');
+  /** Direcciones ya resueltas por geocodificación inversa: "lat,lon" -> texto. */
+  private direcciones = signal<Record<string, string>>({});
   /** Cache de relaciones: path -> id -> etiqueta. */
   private lookups = signal<Record<string, Record<string, string>>>({});
 
@@ -142,15 +152,102 @@ export class CrudPageComponent {
         this.lookups.set(mapa);
         this.datos.set(res['_datos'] as any[]);
         this.cargando.set(false);
+        this.resolverDirecciones();
       },
       error: (e: HttpErrorResponse) => { this.cargando.set(false); this.snack.open(mensajeError(e), 'OK', { duration: 5000 }); }
     });
   }
 
+  /** Descarga la imagen SVG del recorrido (con el token) y la abre en una pestaña nueva. */
+  verImagen(r: any) {
+    this.api.blob(`${this.def().path}/${r.id}/imagen`).subscribe({
+      next: (b) => window.open(URL.createObjectURL(b), '_blank'),
+      error: () => this.snack.open('Esta telemetría no tiene una ruta GPS para dibujar.', 'Cerrar', { duration: 4000 })
+    });
+  }
+
+  /** Primer y último punto [lon, lat] de un GeoJSON (LineString, Feature o FeatureCollection). */
+  private extremos(v: any): ([number, number] | null)[] {
+    const pts: [number, number][] = [];
+    const rec = (n: any) => {
+      if (!n) return;
+      if (Array.isArray(n)) {
+        if (n.length >= 2 && typeof n[0] === 'number' && typeof n[1] === 'number') pts.push([n[0], n[1]]);
+        else n.forEach(rec);
+      } else if (typeof n === 'object') {
+        rec(n.coordinates); rec(n.geometry); rec(n.features); rec(n.geometries);
+      }
+    };
+    try { rec(typeof v === 'string' ? JSON.parse(v) : v); } catch { /* sin puntos */ }
+    return [pts[0] ?? null, pts[pts.length - 1] ?? null];
+  }
+
+  private clave(p: [number, number]) { return `${p[1].toFixed(5)},${p[0].toFixed(5)}`; }
+
+  /** Pide las direcciones (geocodificación inversa, una a una; el servidor las guarda en caché). */
+  private resolverDirecciones() {
+    const cols = this.def().columns.filter(c => c.format === 'ruta' || c.format === 'resumen');
+    if (!cols.length) return;
+    const pendientes = new Map<string, [number, number]>();
+    for (const r of this.datos()) {
+      for (const c of cols) {
+        for (const p of this.extremos(c.format === 'resumen' ? r['rutaGps'] : r[c.key])) {
+          if (p && !this.direcciones()[this.clave(p)]) pendientes.set(this.clave(p), p);
+        }
+      }
+    }
+    from([...pendientes]).pipe(
+      concatMap(([k, p]) => this.api.get<{ texto: string }>(`geocodificacion/inversa?lat=${p[1]}&lon=${p[0]}`).pipe(
+        catchError(() => of(null)),
+        concatMap(d => { this.direcciones.update(x => ({ ...x, [k]: d?.texto ?? `${k}` })); return of(null); })
+      ))
+    ).subscribe();
+  }
+
+  /** Direcciones de inicio y fin de la ruta GPS de una fila (resueltas, o las guardadas en el resumen). */
+  private direccionesDe(r: any): { inicio?: string; fin?: string } {
+    const [a, b] = this.extremos(r?.['rutaGps']);
+    const d = this.direcciones();
+    const guardado = r?.['resumenTelemetria'];
+    return {
+      inicio: (a && d[this.clave(a)]) || guardado?.direccionInicio || undefined,
+      fin: (b && d[this.clave(b)]) || guardado?.direccionFin || undefined
+    };
+  }
+
+  /** Resumen de la telemetría: solo las direcciones de inicio y fin de la ruta GPS. */
+  private resumenLegible(v: any, fila?: any): string {
+    const o = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return null; } })() : v;
+    const d = this.direccionesDe({ ...(fila ?? {}), resumenTelemetria: o });
+    const partes: string[] = [];
+    if (d.inicio) partes.push(`Inicio: ${d.inicio}`);
+    if (d.fin) partes.push(`Fin: ${d.fin}`);
+    if (partes.length) return partes.join(' · ');
+    return this.extremos(fila?.['rutaGps'])[0] ? 'Buscando direcciones…' : '';
+  }
+
+  /** En telemetría, el resumen que se edita incluye la dirección de inicio y de fin. */
+  private conDirecciones(r: any) {
+    if (!this.def().columns.some(c => c.format === 'resumen')) return r;
+    const d = this.direccionesDe(r);
+    if (!d.inicio && !d.fin) return r;
+    const base = r.resumenTelemetria && typeof r.resumenTelemetria === 'object' ? r.resumenTelemetria : {};
+    return { ...r, resumenTelemetria: { ...base, ...(d.inicio && { direccionInicio: d.inicio }), ...(d.fin && { direccionFin: d.fin }) } };
+  }
+
   texto(r: any, c: Column): string {
     const v = r[c.key];
+    if (c.format === 'resumen') return this.resumenLegible(v, r);
     if (v === null || v === undefined) return '';
     if (c.format === 'lookup') return this.lookups()[c.lookup!.path]?.[v] ?? v;
+    if (c.format === 'ruta') {
+      const [a, b] = this.extremos(v);
+      if (!a || !b) return 'Ruta sin puntos';
+      const d = this.direcciones();
+      const ini = d[this.clave(a)];
+      const fin = d[this.clave(b)];
+      return ini && fin ? `${ini} → ${fin}` : 'Buscando direcciones…';
+    }
     if (c.format === 'json') return JSON.stringify(v);
     if (c.format === 'fecha') return new Date(v).toLocaleString('es-CO');
     return String(v);
@@ -170,7 +267,7 @@ export class CrudPageComponent {
     this.abrir({
       title: `Editar ${d.singular}`,
       fields: d.fields.filter(f => !f.soloCrear),
-      value: r,
+      value: this.conDirecciones(r),
       submit: body => this.api.update(d.path, r.id, body)
     });
   }
@@ -195,7 +292,7 @@ export class CrudPageComponent {
     const d = this.def();
     const path = `${d.path}/${a.path.replace('{id}', r.id)}`;
     if (a.confirmar) {
-      this.dialog.open(ConfirmDialogComponent, { data: { mensaje: a.confirmar, boton: 'Aprobar' } }).afterClosed().subscribe(ok => {
+      this.dialog.open(ConfirmDialogComponent, { data: { mensaje: a.confirmar, boton: a.label } }).afterClosed().subscribe(ok => {
         if (!ok) return;
         const req = a.method === 'PATCH' ? this.api.patch(path, {}) : this.api.put(path, {});
         req.subscribe({

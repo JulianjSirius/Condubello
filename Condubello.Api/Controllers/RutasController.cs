@@ -30,6 +30,18 @@ public class RutasController : ApiControllerBase
     public async Task<IActionResult> Update(Guid id, UpdateRutaRequest request, CancellationToken cancellationToken) =>
         HandleResult(await Sender.Send(new UpdateRutaCommand(id, request), cancellationToken), "Ruta actualizada correctamente.");
 
+    /// <summary>Reemplaza los puntos de la ruta por el trazado real sobre las calles (requiere OSRM).</summary>
+    [HttpPatch("{id:guid}/ajustar-calles")]
+    [ProducesResponseType<ApiResponse<RutaDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> AjustarACalles(Guid id, CancellationToken cancellationToken) =>
+        HandleResult(await Sender.Send(new AjustarRutaACallesCommand(id), cancellationToken), "Ruta ajustada a las calles correctamente.");
+
+    /// <summary>Calcula el trazado por calles entre un punto A y un punto B, sin guardarlo.</summary>
+    [HttpPost("calcular-trazado")]
+    [ProducesResponseType<ApiResponse<TrazadoDto>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CalcularTrazado(CalcularTrazadoRequest request, CancellationToken cancellationToken) =>
+        HandleResult(await Sender.Send(new CalcularTrazadoCommand(request), cancellationToken), "Trazado calculado correctamente.");
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType<ApiResponse<Guid>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken) =>

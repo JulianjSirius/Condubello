@@ -20,8 +20,8 @@ import { FormDialogComponent } from '../crud/form-dialog.component';
   selector: 'app-actividades',
   imports: [DatePipe, MatTableModule, MatChipsModule, MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule],
   template: `
-    <h1>Actividades</h1>
-    <p class="sub">Sesiones prácticas {{ auth.tieneRol('Estudiante') ? 'programadas para usted' : 'de la escuela' }}.</p>
+    <h1>{{ titulo() }}</h1>
+    <p class="sub">Sesiones prácticas {{ auth.tieneRol('Estudiante') ? 'programadas para usted' : auth.tieneRol('Instructor') ? 'asignadas a usted' : 'de la escuela' }}.</p>
 
     <mat-chip-listbox class="filtros" aria-label="Filtrar por estado" (change)="estado.set($event.value)">
       <mat-chip-option [value]="null" [selected]="estado() === null">Todas ({{ datos().length }})</mat-chip-option>
@@ -64,7 +64,7 @@ import { FormDialogComponent } from '../crud/form-dialog.component';
         </ng-container>
         <tr mat-header-row *matHeaderRowDef="columnas()"></tr>
         <tr mat-row *matRowDef="let row; columns: columnas()"></tr>
-        <tr class="mat-row" *matNoDataRow><td class="vacio" [attr.colspan]="columnas().length">No hay actividades para mostrar</td></tr>
+        <tr class="mat-row" *matNoDataRow><td class="vacio" [attr.colspan]="columnas().length">No hay {{ titulo().toLowerCase() }} para mostrar</td></tr>
       </table>
     </div>
   `,
@@ -95,6 +95,7 @@ export class ActividadesComponent {
   estado = signal<string | null>(null);
   cargando = signal(false);
 
+  titulo = computed(() => this.auth.tieneRol('Instructor') ? 'Tareas' : 'Actividades');
   puedeSeguimiento = computed(() => this.auth.tieneRol('Administrativo', 'Instructor'));
   columnas = computed(() => ['fecha', 'estudiante', 'instructor', 'duracion', 'estado', ...(this.puedeSeguimiento() ? ['acciones'] : [])]);
   filas = computed(() => {

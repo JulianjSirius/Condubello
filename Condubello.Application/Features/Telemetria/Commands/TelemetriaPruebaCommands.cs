@@ -51,8 +51,10 @@ internal static class TelemetriaReglas
 public record CreateTelemetriaPruebaCommand(CreateTelemetriaPruebaRequest Data) : IRequest<Result<TelemetriaPruebaDto>>;
 
 public class CreateTelemetriaPruebaHandler(
+    IRoutingProvider routing,
     IRepository<TelemetriaPrueba> repository,
     IRepository<SesionPractica> sesiones,
+    IRepository<Ruta> rutas,
     IUnitOfWork unitOfWork,
     IMapper mapper) : IRequestHandler<CreateTelemetriaPruebaCommand, Result<TelemetriaPruebaDto>>
 {
@@ -70,11 +72,18 @@ public class CreateTelemetriaPruebaHandler(
 
         var entity = new TelemetriaPrueba { SesionId = sesionId };
         TelemetriaReglas.Aplicar(entity, data);
+        var avisos = TelemetriaReglas.Advertencias(entity);
+        if (await GpsReglas.AjustarRutaGpsAsync(entity.RutaGps, routing, cancellationToken) is { } ajustada)
+            entity.RutaGps = ajustada;
+        else if (entity.RutaGps is not null)
+            avisos.Add("La ruta GPS se guardó sin ajustar a las calles (OSRM no respondió o no es un LineString).");
+        if (await GpsReglas.DesviacionDeSesionAsync(sesionId, entity.RutaGps, sesiones, rutas, cancellationToken) is { } desviacion)
+            entity.AlertaDesviacion = desviacion;
 
         await repository.AddAsync(entity, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), TelemetriaReglas.Advertencias(entity));
+        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), avisos);
     }
 }
 
@@ -82,7 +91,10 @@ public class CreateTelemetriaPruebaHandler(
 public record UpdateTelemetriaPruebaCommand(Guid Id, UpdateTelemetriaPruebaRequest Data) : IRequest<Result<TelemetriaPruebaDto>>;
 
 public class UpdateTelemetriaPruebaHandler(
+    IRoutingProvider routing,
     IRepository<TelemetriaPrueba> repository,
+    IRepository<SesionPractica> sesiones,
+    IRepository<Ruta> rutas,
     IUnitOfWork unitOfWork,
     IMapper mapper) : IRequestHandler<UpdateTelemetriaPruebaCommand, Result<TelemetriaPruebaDto>>
 {
@@ -97,11 +109,18 @@ public class UpdateTelemetriaPruebaHandler(
             return Result<TelemetriaPruebaDto>.Validation(errores);
 
         TelemetriaReglas.Aplicar(entity, request.Data);
+        var avisos = TelemetriaReglas.Advertencias(entity);
+        if (await GpsReglas.AjustarRutaGpsAsync(entity.RutaGps, routing, cancellationToken) is { } ajustada)
+            entity.RutaGps = ajustada;
+        else if (entity.RutaGps is not null)
+            avisos.Add("La ruta GPS se guardó sin ajustar a las calles (OSRM no respondió o no es un LineString).");
+        if (await GpsReglas.DesviacionDeSesionAsync(entity.SesionId, entity.RutaGps, sesiones, rutas, cancellationToken) is { } desviacion)
+            entity.AlertaDesviacion = desviacion;
 
         repository.Update(entity);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), TelemetriaReglas.Advertencias(entity));
+        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), avisos);
     }
 }
 
@@ -110,8 +129,10 @@ public class UpdateTelemetriaPruebaHandler(
 public record ActualizarRutaGpsCommand(Guid Id, ActualizarRutaGpsRequest Data) : IRequest<Result<TelemetriaPruebaDto>>;
 
 public class ActualizarRutaGpsHandler(
+    IRoutingProvider routing,
     IRepository<TelemetriaPrueba> repository,
     IRepository<SesionPractica> sesiones,
+    IRepository<Ruta> rutas,
     ICurrentUser currentUser,
     IUnitOfWork unitOfWork,
     IMapper mapper) : IRequestHandler<ActualizarRutaGpsCommand, Result<TelemetriaPruebaDto>>
@@ -133,11 +154,18 @@ public class ActualizarRutaGpsHandler(
             return Result<TelemetriaPruebaDto>.Validation([error]);
 
         entity.RutaGps = JsonHelper.ToJson(request.Data.RutaGps);
+        var avisos = TelemetriaReglas.Advertencias(entity);
+        if (await GpsReglas.AjustarRutaGpsAsync(entity.RutaGps, routing, cancellationToken) is { } ajustada)
+            entity.RutaGps = ajustada;
+        else if (entity.RutaGps is not null)
+            avisos.Add("La ruta GPS se guardó sin ajustar a las calles (OSRM no respondió o no es un LineString).");
+        entity.AlertaDesviacion = await GpsReglas.DesviacionDeSesionAsync(entity.SesionId, entity.RutaGps, sesiones, rutas, cancellationToken)
+            ?? entity.AlertaDesviacion;
 
         repository.Update(entity);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), TelemetriaReglas.Advertencias(entity));
+        return Result<TelemetriaPruebaDto>.Success(mapper.Map<TelemetriaPruebaDto>(entity), avisos);
     }
 }
 

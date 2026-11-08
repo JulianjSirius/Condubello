@@ -16,6 +16,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<TelemetriaPrueba> TelemetriaPruebas => Set<TelemetriaPrueba>();
     public DbSet<Vehiculo> Vehiculos => Set<Vehiculo>();
     public DbSet<Ruta> Rutas => Set<Ruta>();
+    public DbSet<GeocodificacionCache> GeocodificacionCache => Set<GeocodificacionCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -2,7 +2,10 @@ using Condubello.Application.Common.Interfaces;
 using Condubello.Domain.Interfaces;
 using Condubello.Infrastructure.Auth;
 using Condubello.Infrastructure.Persistence;
+using Condubello.Infrastructure.Geocoding;
+using Condubello.Infrastructure.Gps;
 using Condubello.Infrastructure.Repositories;
+using Condubello.Infrastructure.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +29,14 @@ public static class DependencyInjection
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
-        services.AddSingleton<IGpsProvider, Infrastructure.Gps.SimulatedGpsProvider>();
+        // El GPS es simulado: no hay dispositivos que envíen puntos reales.
+        services.AddSingleton<IGpsProvider, SimulatedGpsProvider>();
+
+        services.Configure<MapTilerSettings>(configuration.GetSection(MapTilerSettings.SectionName));
+        services.AddHttpClient<IGeocodingProvider, MapTilerGeocodingProvider>(c => c.Timeout = TimeSpan.FromSeconds(15));
+
+        services.Configure<OsrmSettings>(configuration.GetSection(OsrmSettings.SectionName));
+        services.AddHttpClient<IRoutingProvider, OsrmRoutingProvider>(c => c.Timeout = TimeSpan.FromSeconds(20));
 
         return services;
     }

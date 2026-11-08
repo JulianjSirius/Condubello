@@ -15,6 +15,7 @@ export const routes: Routes = [
       { path: 'inicio', loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent) },
       { path: 'actividades', loadComponent: () => import('./features/actividades/actividades.component').then(m => m.ActividadesComponent) },
       { path: 'resultados', loadComponent: () => import('./features/resultados/resultados.component').then(m => m.ResultadosComponent) },
+      { path: 'mapa', loadComponent: () => import('./features/mapa/mapa.component').then(m => m.MapaComponent) },
       {
         path: 'mi-cuenta',
         canActivate: [rolGuard('Estudiante')],

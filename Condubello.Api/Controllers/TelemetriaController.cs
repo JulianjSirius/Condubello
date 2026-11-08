@@ -19,6 +19,15 @@ public class TelemetriaController : ApiControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken) =>
         HandleResult(await Sender.Send(new GetTelemetriaPruebaByIdQuery(id), cancellationToken), "Registro de telemetría obtenido correctamente.");
 
+    /// <summary>Imagen SVG del recorrido sobre la ruta autorizada.</summary>
+    [HttpGet("{id:guid}/imagen")]
+    [Produces("image/svg+xml")]
+    public async Task<IActionResult> Imagen(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await Sender.Send(new GetTelemetriaImagenQuery(id), cancellationToken);
+        return result.IsSuccess ? Content(result.Value!, "image/svg+xml") : HandleResult(result, "");
+    }
+
     [HttpPost]
     [ProducesResponseType<ApiResponse<TelemetriaPruebaDto>>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Create(CreateTelemetriaPruebaRequest request, CancellationToken cancellationToken) =>

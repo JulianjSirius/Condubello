@@ -11,6 +11,7 @@ import { forkJoin, Observable, of } from 'rxjs';
 import { ApiService } from '../../core/crud.service';
 import { mensajeError } from '../../core/interceptors';
 import { Field } from './modules';
+import { RutaPickerComponent } from '../mapa/ruta-picker.component';
 
 export interface FormDialogData {
   title: string;
@@ -36,7 +37,7 @@ function aLocal(iso: string | null | undefined): string {
 
 @Component({
   selector: 'app-form-dialog',
-  imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule],
+  imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, RutaPickerComponent],
   template: `
     <h2 mat-dialog-title>{{ data.title }}</h2>
     <form [formGroup]="form" (ngSubmit)="guardar()">
@@ -57,6 +58,11 @@ function aLocal(iso: string | null | undefined): string {
                 </mat-select>
                 @if (form.get(f.key)?.hasError('required')) { <mat-error>Obligatorio</mat-error> }
               </mat-form-field>
+            }
+            @case ('ruta') {
+              <app-ruta-picker [control]="$any(form.get(f.key))" [referencia]="f.referenciaSesion ? referencias()[f.referenciaSesion] : null" />
+              @if (f.referenciaSesion) { <p class="nota">La línea punteada es la ruta autorizada. Lo que marques aquí es una copia: no modifica la ruta original (solo se edita en Rutas).</p> }
+              @if (form.get(f.key)?.hasError('required')) { <mat-error>Marca el punto A y el punto B en el mapa</mat-error> }
             }
             @case ('json') {
               <mat-form-field appearance="outline">
@@ -89,6 +95,7 @@ function aLocal(iso: string | null | undefined): string {
   `,
   styles: `
     .contenido { display: flex; flex-direction: column; gap: 4px; min-width: min(480px, 80vw); padding-top: 8px !important; }
+    .nota { font-size: 12px; margin: 0 0 8px; opacity: .75; }
     .mono { font-family: monospace; }
     .error { color: var(--mat-sys-error); margin: 0; }
   `
@@ -100,6 +107,7 @@ export class FormDialogComponent implements OnInit {
 
   form = new FormGroup<Record<string, FormControl>>({});
   opciones = signal<Record<string, { value: string; label: string }[] | undefined>>({});
+  referencias = signal<Record<string, unknown>>({});
   error = signal('');
   enviando = signal(false);
 
@@ -114,14 +122,36 @@ export class FormDialogComponent implements OnInit {
       if (f.max !== undefined) validators.push(Validators.max(f.max));
       if (f.type === 'email') validators.push(Validators.email);
       if (f.type === 'json') validators.push(jsonValido);
-
+      
       let v = inicial[f.key];
       if (f.type === 'datetime') v = aLocal(v);
+      else if (f.type === 'ruta') v = v == null ? '' : JSON.stringify(v);
       else if (f.type === 'json') v = v == null ? '' : JSON.stringify(v, null, 2);
       else if (f.type === 'checkbox') v = !!v;
       else if (f.type === 'password') v = '';
       else if (v === undefined) v = f.type === 'select' ? null : '';
       this.form.addControl(f.key, new FormControl(v, validators));
+    }
+
+    // Ruta autorizada de la sesión, como referencia de solo lectura para los campos de ruta.
+    for (const f of this.data.fields) {
+      const clave = f.referenciaSesion;
+      if (f.type !== 'ruta' || !clave) continue;
+      const cargarRef = (sesionId: string | null) => {
+        if (!sesionId) { this.referencias.update(r => ({ ...r, [clave]: null })); return; }
+        this.api.get(`sesiones-practicas/${sesionId}`).subscribe({
+          next: (s: any) => s?.rutaId
+            ? this.api.get(`rutas/${s.rutaId}`).subscribe({
+                next: (r: any) => this.referencias.update(x => ({ ...x, [clave]: r?.geoJson })),
+                error: () => this.referencias.update(x => ({ ...x, [clave]: null }))
+              })
+            : this.referencias.update(x => ({ ...x, [clave]: null })),
+          error: () => this.referencias.update(x => ({ ...x, [clave]: null }))
+        });
+      };
+      const ctrl = this.form.get(clave);
+      cargarRef(ctrl?.value || inicial[clave] || null);
+      ctrl?.valueChanges.subscribe(v => cargarRef(v || null));
     }
 
     // Carga las opciones de los selects.
@@ -155,7 +185,7 @@ export class FormDialogComponent implements OnInit {
       if (v === '' || v === undefined) v = null;
       if (v !== null) {
         if (f.type === 'datetime') v = new Date(v).toISOString();
-        else if (f.type === 'json') v = JSON.parse(v);
+        else if (f.type === 'json' || f.type === 'ruta') v = JSON.parse(v);
         else if (f.type === 'number') v = Number(v);
       }
       body[f.key] = v;

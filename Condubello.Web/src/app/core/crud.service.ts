@@ -27,6 +27,9 @@ export class ApiService {
   put<T = any>(path: string, body: unknown): Observable<T> {
     return this.http.put<ApiResponse<T>>(`${API_URL}/api/${path}`, body).pipe(map(r => r.data));
   }
+  blob(path: string): Observable<Blob> {
+    return this.http.get(`${API_URL}/api/${path}`, { responseType: 'blob' });
+  }
   remove(path: string, id: string): Observable<void> {
     return this.http.delete<ApiResponse<unknown>>(`${API_URL}/api/${path}/${id}`).pipe(map(() => undefined));
   }

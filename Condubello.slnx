@@ -1,9 +1,7 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Condubello.Api/Condubello.Api.csproj" />
-    <Project Path="src/Condubello.Application/Condubello.Application.csproj" />
-    <Project Path="src/Condubello.Domain/Condubello.Domain.csproj" />
-    <Project Path="src/Condubello.Gateway/Condubello.Gateway.csproj" />
-    <Project Path="src/Condubello.Infrastructure/Condubello.Infrastructure.csproj" />
-  </Folder>
+  <Project Path="Condubello.Api/Condubello.Api.csproj" />
+  <Project Path="Condubello.Application/Condubello.Application.csproj" />
+  <Project Path="Condubello.Domain/Condubello.Domain.csproj" />
+  <Project Path="Condubello.Gateway/Condubello.Gateway.csproj" />
+  <Project Path="Condubello.Infrastructure/Condubello.Infrastructure.csproj" />
 </Solution>

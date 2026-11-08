@@ -1,6 +1,6 @@
 import { ESTADOS_PRUEBA, ESTADOS_VEHICULO, Rol, TIPOS_LICENCIA } from '../../core/models';
 
-export type FieldType = 'text' | 'email' | 'password' | 'number' | 'datetime' | 'select' | 'checkbox' | 'json' | 'url';
+export type FieldType = 'text' | 'email' | 'password' | 'number' | 'datetime' | 'select' | 'checkbox' | 'json' | 'url' | 'ruta';
 
 export interface Field {
   key: string;
@@ -15,6 +15,8 @@ export interface Field {
   options?: string[];
   /** Carga las opciones desde otro endpoint (select de relaciones). */
   lookup?: { path: string; label: (x: any) => string };
+  /** Solo type 'ruta': clave del campo con la sesión, cuya ruta autorizada se muestra como referencia (solo lectura). */
+  referenciaSesion?: string;
   /** Solo se muestra al crear. */
   soloCrear?: boolean;
   /** Solo se muestra al editar. */
@@ -25,7 +27,7 @@ export interface Column {
   key: string;
   label: string;
   /** Formato de la celda. */
-  format?: 'fecha' | 'bool' | 'json' | 'lookup' | 'enum';
+  format?: 'fecha' | 'bool' | 'json' | 'ruta' | 'resumen' | 'lookup' | 'enum';
   lookup?: { path: string; label: (x: any) => string };
 }
 
@@ -147,15 +149,19 @@ export const MODULES: ModuleDef[] = [
     columns: [
       { key: 'nombre', label: 'Nombre' },
       { key: 'descripcion', label: 'Descripción' },
-      { key: 'geoJson', label: 'GeoJSON', format: 'json' },
+      { key: 'geoJson', label: 'Ruta', format: 'ruta' },
       { key: 'activa', label: 'Activa', format: 'bool' }
     ],
     fields: [
       { key: 'nombre', label: 'Nombre', required: true, maxLength: 150 },
       { key: 'descripcion', label: 'Descripción', maxLength: 500 },
-      { key: 'geoJson', label: 'Ruta autorizada (GeoJSON)', type: 'json' },
+      { key: 'geoJson', label: 'Ruta autorizada (punto A → punto B)', type: 'ruta', required: true },
       { key: 'activa', label: 'Activa', type: 'checkbox' }
-    ]
+    ],
+    actions: [{
+      label: 'Ajustar a las calles', icon: 'route', roles: ADMIN, path: '{id}/ajustar-calles', method: 'PATCH',
+      fields: [], confirmar: 'Se reemplazarán los puntos de la ruta por el trazado real sobre las calles. Esta acción no se puede deshacer. ¿Continuar?'
+    }]
   },
   {
     path: 'sesiones-practicas', title: 'Sesiones prácticas', singular: 'sesión práctica', icon: 'event',
@@ -187,19 +193,19 @@ export const MODULES: ModuleDef[] = [
     leer: TODOS, crear: ADMIN, editar: ADMIN, borrar: ADMIN,
     columns: [
       { key: 'sesionId', label: 'Sesión', format: 'lookup', lookup: sesiones },
-      { key: 'resumenTelemetria', label: 'Resumen', format: 'json' },
-      { key: 'rutaGps', label: 'Ruta GPS', format: 'json' },
+      { key: 'resumenTelemetria', label: 'Resumen', format: 'resumen' },
+      { key: 'rutaGps', label: 'Ruta GPS', format: 'ruta' },
       { key: 'alertaDesviacion', label: 'Alerta desviación', format: 'bool' }
     ],
     fields: [
       { key: 'sesionId', label: 'Sesión', type: 'select', required: true, lookup: sesiones, soloCrear: true },
       { key: 'resumenTelemetria', label: 'Resumen (JSON)', type: 'json' },
-      { key: 'rutaGps', label: 'Ruta GPS (GeoJSON)', type: 'json' },
+      { key: 'rutaGps', label: 'Ruta GPS (punto A → punto B)', type: 'ruta', referenciaSesion: 'sesionId' },
       { key: 'alertaDesviacion', label: 'Alerta de desviación', type: 'checkbox' }
     ],
     actions: [{
       label: 'Actualizar ruta GPS', icon: 'map', roles: ADMIN_INSTR, path: '{id}/ruta-gps', method: 'PATCH',
-      fields: [{ key: 'rutaGps', label: 'Ruta GPS (GeoJSON)', type: 'json' }]
+      fields: [{ key: 'rutaGps', label: 'Ruta GPS (punto A → punto B)', type: 'ruta', referenciaSesion: 'sesionId' }]
     }],
     accionGlobal: {
       label: 'Sincronizar GPS', icon: 'gps_fixed', roles: ADMIN, path: 'sincronizar',

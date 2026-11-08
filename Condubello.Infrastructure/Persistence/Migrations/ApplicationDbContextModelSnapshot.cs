@@ -172,6 +172,38 @@ namespace Condubello.Infrastructure.Persistence.Migrations
                     b.ToTable("estudiantes", (string)null);
                 });
 
+            modelBuilder.Entity("Condubello.Domain.Entities.GeocodificacionCache", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Clave")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("clave");
+
+                    b.Property<DateTime>("CreadoEn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creado_en");
+
+                    b.Property<string>("Resultado")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("resultado");
+
+                    b.HasKey("Id")
+                        .HasName("pk_geocodificacion_cache");
+
+                    b.HasIndex("Clave")
+                        .IsUnique()
+                        .HasDatabaseName("ix_geocodificacion_cache_clave");
+
+                    b.ToTable("geocodificacion_cache", (string)null);
+                });
+
             modelBuilder.Entity("Condubello.Domain.Entities.Instructor", b =>
                 {
                     b.Property<Guid>("Id")

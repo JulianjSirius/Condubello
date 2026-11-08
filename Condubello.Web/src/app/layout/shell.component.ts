@@ -17,8 +17,9 @@ import { MODULES } from '../features/crud/modules';
         <div class="marca"><mat-icon>directions_car</mat-icon> Condubello</div>
         <mat-nav-list>
           <a mat-list-item routerLink="/inicio" routerLinkActive="activo"><mat-icon matListItemIcon>dashboard</mat-icon><span matListItemTitle>Inicio</span></a>
-          <a mat-list-item routerLink="/actividades" routerLinkActive="activo"><mat-icon matListItemIcon>event_note</mat-icon><span matListItemTitle>Actividades</span></a>
+          <a mat-list-item routerLink="/actividades" routerLinkActive="activo"><mat-icon matListItemIcon>event_note</mat-icon><span matListItemTitle>{{ auth.tieneRol('Instructor') ? 'Tareas' : 'Actividades' }}</span></a>
           <a mat-list-item routerLink="/resultados" routerLinkActive="activo"><mat-icon matListItemIcon>insights</mat-icon><span matListItemTitle>Resultados</span></a>
+          <a mat-list-item routerLink="/mapa" routerLinkActive="activo"><mat-icon matListItemIcon>map</mat-icon><span matListItemTitle>Mapa</span></a>
           @if (auth.tieneRol('Estudiante')) {
             <a mat-list-item routerLink="/mi-cuenta" routerLinkActive="activo"><mat-icon matListItemIcon>account_circle</mat-icon><span matListItemTitle>Mi cuenta</span></a>
           }
