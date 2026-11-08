@@ -3,6 +3,7 @@
     <Project Path="src/Condubello.Api/Condubello.Api.csproj" />
     <Project Path="src/Condubello.Application/Condubello.Application.csproj" />
     <Project Path="src/Condubello.Domain/Condubello.Domain.csproj" />
+    <Project Path="src/Condubello.Gateway/Condubello.Gateway.csproj" />
     <Project Path="src/Condubello.Infrastructure/Condubello.Infrastructure.csproj" />
   </Folder>
 </Solution>
